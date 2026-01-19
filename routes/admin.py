@@ -91,12 +91,12 @@ def assign_schedule():
         return jsonify({"message": "Invalid day"}), 400
 
     try:
-        start_dt = datetime.strptime(start_time, "%H:%M")
-        end_dt = datetime.strptime(end_time, "%H:%M")
+        start_t = datetime.strptime(start_time, "%H:%M").time()
+        end_t = datetime.strptime(end_time, "%H:%M").time()
     except ValueError:
         return jsonify({"message": "Invalid time format"}), 400
 
-    if start_dt >= end_dt:
+    if start_t >= end_t:
         return jsonify({"message": "Start time must be before end time"}), 400
 
     teacher = User.query.filter_by(username=teacher_username, role="teacher").first()
@@ -106,8 +106,8 @@ def assign_schedule():
     schedule = TeacherSchedule(
         teacher_id=teacher.id,
         day_of_week=day,
-        start_time=start_time,
-        end_time=end_time
+        start_time=start_t,
+        end_time=end_t
     )
 
     db.session.add(schedule)

@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from datetime import datetime
+from datetime import datetime, date
 from models import db, User, TeacherSchedule, AttendanceSession, AttendanceRecord
 
 teacher_bp = Blueprint("teacher", __name__)
@@ -7,45 +7,46 @@ teacher_bp = Blueprint("teacher", __name__)
 
 @teacher_bp.route("/start-attendance", methods=["POST"])
 def start_attendance():
-    data = request.json
-    username = data.get("username")
+    username = request.json.get("username")
 
     teacher = User.query.filter_by(username=username, role="teacher").first()
     if not teacher:
         return jsonify({"message": "Teacher not found"}), 404
 
     now = datetime.now()
-    today = now.date()
+    today = date.today()
     day = now.strftime("%A")
-    time = now.strftime("%H:%M")
+    current_time = now.time()
 
-    schedule = TeacherSchedule.query.filter(
-        TeacherSchedule.teacher_id == teacher.id,
-        TeacherSchedule.day_of_week == day,
-        TeacherSchedule.start_time <= time,
-        TeacherSchedule.end_time >= time
-    ).first()
+    schedules = TeacherSchedule.query.filter_by(
+        teacher_id=teacher.id,
+        day_of_week=day
+    ).all()
 
-    if not schedule:
+    if not schedules:
+        return jsonify({"message": "No schedule today"}), 403
+
+    valid_schedule = next(
+        (s for s in schedules if s.start_time <= current_time <= s.end_time),
+        None
+    )
+
+    if not valid_schedule:
         return jsonify({"message": "Not within assigned schedule"}), 403
 
-    session = AttendanceSession.query.filter_by(
+    # 🔒 Close ONLY this teacher's previous sessions
+    AttendanceSession.query.filter_by(
         teacher_id=teacher.id,
-        schedule_id=schedule.id,
-        session_date=today
-    ).first()
+        is_active=True
+    ).update({"is_active": False})
 
-    if session:
-        session.is_active = True
-        db.session.commit()
-        return jsonify({"session_id": session.id}), 200
-
+    # ✅ Always create a NEW session
     session = AttendanceSession(
         teacher_id=teacher.id,
-        schedule_id=schedule.id,
+        schedule_id=valid_schedule.id,
         session_date=today,
         is_active=True,
-        beacon_id=teacher.beacon_id
+        beacon_id=teacher.beacon_id.lower()
     )
 
     db.session.add(session)
@@ -54,27 +55,12 @@ def start_attendance():
     return jsonify({"session_id": session.id}), 201
 
 
-@teacher_bp.route("/close-attendance", methods=["POST"])
-def close_attendance():
-    data = request.json
-    session_id = data.get("session_id")
-
-    session = AttendanceSession.query.get(session_id)
-    if not session:
-        return jsonify({"message": "Session not found"}), 404
-
-    session.is_active = False
-    db.session.commit()
-
-    return jsonify({"message": "Attendance session closed"}), 200
-
-
 @teacher_bp.route("/absent-students", methods=["GET"])
 def absent_students():
     session_id = request.args.get("session_id")
     session = AttendanceSession.query.get(session_id)
 
-    if not session:
+    if not session or not session.is_active:
         return jsonify({"message": "Session not found"}), 404
 
     students = User.query.filter_by(role="student").all()
@@ -120,3 +106,17 @@ def mark_present():
 
     db.session.commit()
     return jsonify({"message": "Student marked present"}), 200
+
+
+@teacher_bp.route("/close-attendance", methods=["POST"])
+def close_attendance():
+    session_id = request.json.get("session_id")
+    session = AttendanceSession.query.get(session_id)
+
+    if not session:
+        return jsonify({"message": "Session not found"}), 404
+
+    session.is_active = False
+    db.session.commit()
+
+    return jsonify({"message": "Attendance session closed"}), 200

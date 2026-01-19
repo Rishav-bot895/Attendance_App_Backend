@@ -9,9 +9,9 @@ student_bp = Blueprint("student", __name__)
 def active_teachers():
     today = date.today()
 
-    sessions = AttendanceSession.query.filter_by(
-        session_date=today,
-        is_active=True
+    sessions = AttendanceSession.query.filter(
+        AttendanceSession.session_date == today,
+        AttendanceSession.is_active == True
     ).all()
 
     result = []
@@ -20,10 +20,11 @@ def active_teachers():
         result.append({
             "teacher_name": teacher.username,
             "session_id": s.id,
-            "beacon_id": s.beacon_id
+            "beacon_id": s.beacon_id.lower()
         })
 
     return jsonify(result), 200
+
 
 
 @student_bp.route("/mark-attendance", methods=["POST"])
