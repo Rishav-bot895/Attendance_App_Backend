@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from werkzeug.security import generate_password_hash
 from datetime import datetime
+import uuid
 
 from models import db, User, TeacherSchedule
 
@@ -18,7 +19,6 @@ VALID_DAYS = [
 @admin_bp.route("/create-user", methods=["POST"])
 def create_user():
     data = request.json
-
     username = data.get("username")
     password = data.get("password")
     role = data.get("role")
@@ -38,6 +38,10 @@ def create_user():
         role=role
     )
 
+    # 🔑 BLE UUID generated ONCE for teachers
+    if role == "teacher":
+        user.beacon_id = str(uuid.uuid4())
+
     db.session.add(user)
     db.session.commit()
 
@@ -56,7 +60,6 @@ def delete_user():
         return jsonify({"message": "Username required"}), 400
 
     user = User.query.filter_by(username=username).first()
-
     if not user:
         return jsonify({"message": "User not found"}), 404
 
@@ -70,7 +73,7 @@ def delete_user():
 
 
 # -----------------------------
-# ASSIGN SCHEDULE (WITH VALIDATION)
+# ASSIGN SCHEDULE
 # -----------------------------
 @admin_bp.route("/assign-schedule", methods=["POST"])
 def assign_schedule():
@@ -81,36 +84,22 @@ def assign_schedule():
     start_time = data.get("start_time")
     end_time = data.get("end_time")
 
-    # Basic presence check
     if not teacher_username or not day or not start_time or not end_time:
         return jsonify({"message": "Missing fields"}), 400
 
-    # Day validation
     if day not in VALID_DAYS:
-        return jsonify({
-            "message": "Invalid day. Use full day name (e.g., Monday)"
-        }), 400
+        return jsonify({"message": "Invalid day"}), 400
 
-    # Time format validation (HH:MM 24-hour)
     try:
         start_dt = datetime.strptime(start_time, "%H:%M")
         end_dt = datetime.strptime(end_time, "%H:%M")
     except ValueError:
-        return jsonify({
-            "message": "Invalid time format. Use HH:MM (24-hour)"
-        }), 400
+        return jsonify({"message": "Invalid time format"}), 400
 
-    # Logical validation
     if start_dt >= end_dt:
-        return jsonify({
-            "message": "Start time must be before end time"
-        }), 400
+        return jsonify({"message": "Start time must be before end time"}), 400
 
-    teacher = User.query.filter_by(
-        username=teacher_username,
-        role="teacher"
-    ).first()
-
+    teacher = User.query.filter_by(username=teacher_username, role="teacher").first()
     if not teacher:
         return jsonify({"message": "Teacher not found"}), 404
 

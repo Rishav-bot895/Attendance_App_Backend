@@ -1,6 +1,5 @@
 from flask import Blueprint, request, jsonify
 from datetime import date
-
 from models import db, User, AttendanceSession, AttendanceRecord
 
 student_bp = Blueprint("student", __name__)
@@ -15,21 +14,21 @@ def active_teachers():
         is_active=True
     ).all()
 
-    teachers = []
+    result = []
     for s in sessions:
         teacher = User.query.get(s.teacher_id)
-        teachers.append({
+        result.append({
             "teacher_name": teacher.username,
-            "session_id": s.id
+            "session_id": s.id,
+            "beacon_id": s.beacon_id
         })
 
-    return jsonify(teachers), 200
+    return jsonify(result), 200
 
 
 @student_bp.route("/mark-attendance", methods=["POST"])
 def mark_attendance():
     data = request.json
-
     username = data.get("username")
     session_id = data.get("session_id")
 

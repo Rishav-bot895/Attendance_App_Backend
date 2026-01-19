@@ -1,6 +1,5 @@
 from flask import Blueprint, request, jsonify
 from datetime import datetime
-
 from models import db, User, TeacherSchedule, AttendanceSession, AttendanceRecord
 
 teacher_bp = Blueprint("teacher", __name__)
@@ -17,21 +16,19 @@ def start_attendance():
 
     now = datetime.now()
     today = now.date()
-    current_day = now.strftime("%A")
-    current_time = now.strftime("%H:%M")
+    day = now.strftime("%A")
+    time = now.strftime("%H:%M")
 
-    # Find the CURRENT schedule slot
     schedule = TeacherSchedule.query.filter(
         TeacherSchedule.teacher_id == teacher.id,
-        TeacherSchedule.day_of_week == current_day,
-        TeacherSchedule.start_time <= current_time,
-        TeacherSchedule.end_time >= current_time
+        TeacherSchedule.day_of_week == day,
+        TeacherSchedule.start_time <= time,
+        TeacherSchedule.end_time >= time
     ).first()
 
     if not schedule:
         return jsonify({"message": "Not within assigned schedule"}), 403
 
-    # 🔁 Check if session already exists for THIS slot and date
     session = AttendanceSession.query.filter_by(
         teacher_id=teacher.id,
         schedule_id=schedule.id,
@@ -39,30 +36,22 @@ def start_attendance():
     ).first()
 
     if session:
-        # Reopen existing session
         session.is_active = True
         db.session.commit()
+        return jsonify({"session_id": session.id}), 200
 
-        return jsonify({
-            "message": "Attendance session resumed",
-            "session_id": session.id
-        }), 200
-
-    # Create new session (first time only)
     session = AttendanceSession(
         teacher_id=teacher.id,
         schedule_id=schedule.id,
         session_date=today,
-        is_active=True
+        is_active=True,
+        beacon_id=teacher.beacon_id
     )
 
     db.session.add(session)
     db.session.commit()
 
-    return jsonify({
-        "message": "Attendance session started",
-        "session_id": session.id
-    }), 201
+    return jsonify({"session_id": session.id}), 201
 
 
 @teacher_bp.route("/close-attendance", methods=["POST"])
@@ -83,8 +72,8 @@ def close_attendance():
 @teacher_bp.route("/absent-students", methods=["GET"])
 def absent_students():
     session_id = request.args.get("session_id")
-
     session = AttendanceSession.query.get(session_id)
+
     if not session:
         return jsonify({"message": "Session not found"}), 404
 
@@ -96,7 +85,6 @@ def absent_students():
             session_id=session.id,
             student_id=s.id
         ).first()
-
         if not record:
             absentees.append(s.username)
 
@@ -131,5 +119,4 @@ def mark_present():
         db.session.add(record)
 
     db.session.commit()
-
     return jsonify({"message": "Student marked present"}), 200
