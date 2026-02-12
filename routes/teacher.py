@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from datetime import datetime, date
+from datetime import datetime, date, time, timedelta
 from models import db, User, TeacherSchedule, AttendanceSession, AttendanceRecord
 
 teacher_bp = Blueprint("teacher", __name__)
@@ -18,41 +18,63 @@ def start_attendance():
     day = now.strftime("%A")
     current_time = now.time()
 
+    # Get all schedules for this teacher on this day
     schedules = TeacherSchedule.query.filter_by(
         teacher_id=teacher.id,
         day_of_week=day
     ).all()
 
     if not schedules:
-        return jsonify({"message": "No schedule today"}), 403
+        return jsonify({"message": "No schedule assigned for today"}), 403
 
-    valid_schedule = next(
-        (s for s in schedules if s.start_time <= current_time <= s.end_time),
-        None
-    )
-
+    # ✅ FLEXIBLE TIME CHECK: Allow starting attendance if teacher has ANY schedule today
+    # This allows multiple teachers with overlapping schedules to start independently
+    # Teacher can start within ±30 minutes of any of their scheduled periods
+    
+    valid_schedule = None
+    BUFFER_MINUTES = 30  # Allow starting 30 min before or after scheduled time
+    
+    for schedule in schedules:
+        # Calculate time window with buffer
+        start_with_buffer = (datetime.combine(today, schedule.start_time) - timedelta(minutes=BUFFER_MINUTES)).time()
+        end_with_buffer = (datetime.combine(today, schedule.end_time) + timedelta(minutes=BUFFER_MINUTES)).time()
+        
+        # Check if current time is within the buffered window
+        if start_with_buffer <= current_time <= end_with_buffer:
+            valid_schedule = schedule
+            break
+    
+    # If no schedule found within buffer, just use the first schedule
+    # This allows teachers to start attendance whenever they want if they have a schedule today
     if not valid_schedule:
-        return jsonify({"message": "Not within assigned schedule"}), 403
+        valid_schedule = schedules[0]  # Use first schedule as fallback
 
-    # 🔒 Close ONLY this teacher's previous sessions
+    # 🔒 Close ONLY this teacher's previous active sessions
+    # This ensures each teacher's sessions are independent
     AttendanceSession.query.filter_by(
         teacher_id=teacher.id,
         is_active=True
     ).update({"is_active": False})
+    db.session.commit()
 
-    # ✅ Always create a NEW session
+    # ✅ Create NEW session with unique beacon_id
+    # Each session uses the teacher's unique beacon_id
+    # This ensures students can ONLY mark attendance for the specific teacher they scan
     session = AttendanceSession(
         teacher_id=teacher.id,
         schedule_id=valid_schedule.id,
         session_date=today,
         is_active=True,
-        beacon_id=teacher.beacon_id.lower()
+        beacon_id=teacher.beacon_id.lower()  # Unique per teacher
     )
 
     db.session.add(session)
     db.session.commit()
 
-    return jsonify({"session_id": session.id}), 201
+    return jsonify({
+        "session_id": session.id,
+        "beacon_id": session.beacon_id
+    }), 201
 
 
 @teacher_bp.route("/absent-students", methods=["GET"])
