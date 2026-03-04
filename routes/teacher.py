@@ -197,7 +197,10 @@ def download_attendance():
     if not session:
         return jsonify({"message": "Session not found"}), 404
 
-    teacher = get_teacher_by_username(session.teacher.user.username)
+    from models import Teacher
+    teacher = Teacher.query.get(session.teacher_id)
+    if not teacher:
+        return jsonify({"message": "Teacher not found"}), 404
 
     students = Student.query.all()
 
