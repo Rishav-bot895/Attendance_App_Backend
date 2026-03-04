@@ -9,12 +9,25 @@ class User(db.Model):
     username = db.Column(db.String(50), unique=True, nullable=False)
     password_hash = db.Column(db.String(200), nullable=False)
     role = db.Column(db.String(10), nullable=False)
-    beacon_id = db.Column(db.String(36), unique=True, nullable=True)
+
+    teacher_profile = db.relationship("Teacher", backref="user", uselist=False, cascade="all, delete")
+    student_profile = db.relationship("Student", backref="user", uselist=False, cascade="all, delete")
+
+
+class Teacher(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), unique=True, nullable=False)
+    beacon_id = db.Column(db.String(36), unique=True, nullable=False)
+
+
+class Student(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), unique=True, nullable=False)
 
 
 class TeacherSchedule(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    teacher_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    teacher_id = db.Column(db.Integer, db.ForeignKey("teacher.id"), nullable=False)
     day_of_week = db.Column(db.String(10), nullable=False)
     start_time = db.Column(db.Time, nullable=False)
     end_time = db.Column(db.Time, nullable=False)
@@ -22,7 +35,7 @@ class TeacherSchedule(db.Model):
 
 class AttendanceSession(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    teacher_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    teacher_id = db.Column(db.Integer, db.ForeignKey("teacher.id"), nullable=False)
     schedule_id = db.Column(db.Integer, db.ForeignKey("teacher_schedule.id"), nullable=False)
     session_date = db.Column(db.Date, default=date.today)
     is_active = db.Column(db.Boolean, default=True)
@@ -32,6 +45,6 @@ class AttendanceSession(db.Model):
 class AttendanceRecord(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     session_id = db.Column(db.Integer, db.ForeignKey("attendance_session.id"), nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey("student.id"), nullable=False)
     status = db.Column(db.String(10), default="absent")
     manual = db.Column(db.Boolean, default=False)
