@@ -65,6 +65,19 @@ def delete_user():
     return jsonify({"message": "User deleted successfully"}), 200
 
 
+@admin_bp.route("/list-users", methods=["GET"])
+def list_users():
+    role = request.args.get("role")
+
+    if role not in ["teacher", "student"]:
+        return jsonify({"message": "Invalid role"}), 400
+
+    users = User.query.filter_by(role=role).all()
+    return jsonify({
+        "users": [{"username": u.username, "role": u.role} for u in users]
+    }), 200
+
+
 @admin_bp.route("/assign-schedule", methods=["POST"])
 def assign_schedule():
     data = request.json
